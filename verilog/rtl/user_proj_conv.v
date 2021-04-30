@@ -110,9 +110,9 @@ module user_proj_conv #(
     assign clk = (~la_oenb[64]) ? la_data_in[64]: wb_clk_i;
     assign rst = (~la_oenb[65]) ? la_data_in[65]: wb_rst_i;
 
-    counter #(
+    convolve #(
         .BITS(BITS)
-    ) counter(
+    ) convolve(
         .clk(clk),
         .reset(rst),
         .ready(wbs_ack_o),
@@ -141,6 +141,11 @@ module convolve #(
     output ready,
     output [BITS-1:0] rdata,
     output [BITS-1:0] count
+    // img_input
+    // img_output
+    // kernel_in
+    // kernel_write_en
+    // shift_write_en
 );
     // reg ready;
     // reg [BITS-1:0] count;
@@ -168,21 +173,32 @@ module convolve #(
     //     end
     // end
 
-    wire [BITS-1:0] kernel_output [(KERNEL_SIZE * KERNEL_SIZE - 1):0];
-    wire [BITS-1:0] shift_reg_output [(KERNEL_SIZE * KERNEL_SIZE - 1):0];
+    wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_output;
+    wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_reg_output;
 
     // TODO: where does this connect to?
     wire img_input;
     wire img_output;
     wire kernel_in;
-    wire kernel_write_eb;
+    wire kernel_write_en, shift_write_en;
+    wire kernel_ready, shift_ready;
 
+    // TODO: connect 
+    // img_input
+    // img_output
+    // kernel_in
+    // kernel_write_en
+    // shift_write_en
+    
     shift_register #(
-        .BITS(BITS)
+        .BITS(BITS),
+        .KERNEL_SIZE(KERNEL_SIZE)
     ) shift_register (
         .clk(clk),
         .reset(reset),
+        .write_en(shift_write_en)
         .serial_img_in(img_input),
+        .ready(shift_ready),
         .out(shift_reg_output)
     );
 
@@ -192,8 +208,9 @@ module convolve #(
     ) kernel_mem (
         .clk(clk),
         .reset(reset),
-        .write_eb(kernel_write_eb),
+        .write_en(kernel_write_en),
         .kernel_in(kernel_in),
+        .ready(kernel_ready),
         .out(kernel_output)
     );
 
@@ -202,7 +219,7 @@ module convolve #(
         .KERNEL_SIZE(KERNEL_SIZE)
     ) multiplier (
         .clk(clk),
-        .out_eb(reset),
+        .out_en(shift_ready & kernel_ready),
         .shift_in(shift_reg_output),
         .kernel_in(kernel_output),
         .pixel_out(img_output)
@@ -219,41 +236,66 @@ module shift_register #(
     input reset,
     input write_en,
     input [BITS-1:0] serial_img_in,
-    output [BITS-1:0] out [(KERNEL_SIZE * KERNEL_SIZE - 1):0]
+    output ready,
+    output [KERNEL_SIZE*KERNEL_SIZE*BITS - 1:0] out
 );
     wire clk;
     wire reset;
     wire write_en;
     wire [BITS-1:0] serial_img_in;
-    wire [BITS-1:0] out [(KERNEL_SIZE * KERNEL_SIZE - 1):0];
-    
+    wire ready;
+    reg [KERNEL_SIZE*KERNEL_SIZE*BITS - 1:0] out;
+
     // Intermediate shift register declaration
     // Dependent on img size, but I believe we need two full rows + 3 values
     reg [BITS-1:0] arr [(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE):0];
-
+    reg [31:0] counter;         // TODO: need to figure out how many bits we actually need
+    integer i, j, k, l, m;
+    
     always @(posedge clk) begin
-        // shift everything
-        integer i;
-        for (i = 0; i < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE) - 1; i = i + 1) begin
-            arr[i] <= arr[i + 1];
-        end
+        // RESET Logic
+        if (reset) begin
+            for (m = 0; m < (IMG_LENGTH * (KERNEL_SIZE - 1); m = m + 1) begin
+                arr[m] <= 0;
+            end
+            counter <= 0;
+        end else begin
+            // Rest of logic
 
-        // push in the data
-        if (write_en) begin
-            arr[(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)] <= serial_img_in;
-        end
+            // shift everything
+            for (i = 0; i < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE) - 1; i = i + 1) begin
+                arr[i] <= arr[i + 1];
+            end
+
+            // push in the data
+            if (write_en) begin
+                arr[(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)] <= serial_img_in;
+
+                // Counter Logic
+                if (counter == (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE + 1)) begin
+                    counter = counter;
+                end else begin
+                    counter <= counter + 1;
+                end
+            end
+        end      
     end
 
-    // FIXME: Figure out the indexing that we actually need here
+    // Determine Output Bits that we need
     always @* begin
-        integer j, k;
-        for (j = 0; j < KERNEL_SIZE; j = j + 1) begin
+        l = 0;
+        for (j = 0; j < (IMG_LENGTH * KERNEL_SIZE); j = j + IMG_LENGTH) begin
             for (k = 0; k < KERNEL_SIZE; k = k + 1) begin
-                out[j*KERNEL_SIZE + k] = arr[j*IMG_LENGTH + k];
+                // out[(j*KERNEL_SIZE+k+1)*BITS-1:(j*KERNEL_SIZE+k)*BITS] = arr[j*IMG_LENGTH + k];
+
+                out[l+(BITS - 1):l] = arr[j + k];
+                l = l + BITS;
             end
         end
     end
 
+    // If counter is full
+    assign ready = (counter == (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE + 1));
 endmodule
 
 module kernel_mem #(
@@ -264,8 +306,8 @@ module kernel_mem #(
     input reset,
     input write_en,
     input [BITS-1:0] kernel_in,
-    output ready;
-    output [BITS-1:0] out [(KERNEL_SIZE * KERNEL_SIZE - 1):0]
+    output ready,
+    output [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
 );
     // Note: We use synchronous active high resets in the same way source code does
     // Note: We also assume that we get streamed one kernel value per clk cycle which
@@ -276,7 +318,7 @@ module kernel_mem #(
     wire write_en;
     wire [BITS-1:0] kernel_in;
     reg ready;
-    reg [BITS-1:0] out [(KERNEL_SIZE * KERNEL_SIZE - 1):0];
+    reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
 
     // Intermediate values
     integer i;
@@ -288,18 +330,15 @@ module kernel_mem #(
             //        fix later on to make the kernel be 1 in the middle and 0 everywhere else
 
             // Resets output values all to 0
-            for (i = 0; i < (KERNEL_SIZE * KERNEL_SIZE - 1); i = i + 1) begin
-                out[i] <= 0;
-            end
+            out[KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] <= 0;
 
-            // Reset ready bit to 0 and reset the counter
-            ready <= 0;
+            // reset the counter
             counter <= 0;
 
         end else begin
             // Assumes that the write_en is enabled continuously but shouldn't matter
             if (write_en && counter < 9) begin
-                out[counter] = kernel_in;
+                out[(counter+1)*BITS-1:counter*BITS] = kernel_in;
                 counter <= counter + 1;
             end else begin
                 counter <= counter;
@@ -307,7 +346,7 @@ module kernel_mem #(
         end
     end
 
-    assign ready = (counter = 9);
+    assign ready = (counter == 9);
 endmodule
 
 module multiplier #(
@@ -315,29 +354,29 @@ module multiplier #(
     parameter KERNEL_SIZE = 3,
 )(
     input clk,
-    input out_eb,
-    input [BITS-1:0] shift_in [(KERNEL_SIZE * KERNEL_SIZE - 1):0],
-    input [BITS-1:0] kernel_in [(KERNEL_SIZE * KERNEL_SIZE - 1):0],
+    input out_en,
+    input [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in,
+    input [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_in,
     output reg [BITS-1:0] pixel_out
 );
 
-wire [BITS-1:0] accum_out;
-
-always @(posedge clk) begin
-    if (out_eb) begin
-        pixel_out <= 0;
-    end else begin
-        pixel_out <= accum_out;
-    end 
-end
-
-always @* begin
+    wire [BITS-1:0] accum_out;
     integer i;
-    accum_out = 0;
-    for (i = 0; i < KERNEL_SIZE * KERNEL_SIZE; i = i + 1) begin
-        accum_out = accum_out + shift_in[i] * kernel_in[i];
+
+    always @(posedge clk) begin
+        if (out_en) begin
+            pixel_out <= 0;
+        end else begin
+            pixel_out <= accum_out;
+        end 
     end
-end
+
+    always @* begin
+        accum_out = 0;
+        for (i = 0; i < KERNEL_SIZE * KERNEL_SIZE; i = i + 1) begin
+            accum_out = accum_out + shift_in[(i+1)*BITS-1:i*BITS] * kernel_in[(i+1)*BITS-1:i*BITS];
+        end
+    end
 
 endmodule
 
