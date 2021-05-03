@@ -36,7 +36,7 @@
  */
 
 module user_proj_conv #(
-    parameter BITS = 32
+    parameter BITS = 9
 )(
 `ifdef USE_POWER_PINS
     inout vdda1,	// User area 1 3.3V supply
@@ -96,8 +96,8 @@ module user_proj_conv #(
     assign wdata = wbs_dat_i;
 
     // IO
-    assign io_out = count;
-    assign io_oeb = {(`MPRJ_IO_PADS-1){rst}};
+    // assign io_out = count;
+    // assign io_oeb = {(`MPRJ_IO_PADS-1){rst}};
 
     // IRQ
     assign irq = 3'b000;	// Unused
@@ -110,42 +110,63 @@ module user_proj_conv #(
     assign clk = (~la_oenb[64]) ? la_data_in[64]: wb_clk_i;
     assign rst = (~la_oenb[65]) ? la_data_in[65]: wb_rst_i;
 
+    wire img_write_en;
+    wire kernel_write_en;
+    wire [BITS-1:0] img_input;
+    wire [BITS-1:0] kernel_in;
+    wire [BITS-1:0] img_output;
+    
+    assign img_write_en = io_in[0];
+    assign kernel_write_en = io_in[1];
+    assign img_input = io_in[BITS+1:2];
+    assign kernel_in = io_in[2*BITS+1:BITS+2];
+
+    assign io_out[3*BITS+1:2*BITS+2] = img_output;
+
+    assign io_oeb[2*BITS+1:0] = 0;
+    assign io_oeb[`MPRJ_IO_PADS-1:2*BITS+2] = {(`MPRJ_IO_PADS-2*BITS-2){rst}};
+
     convolve #(
         .BITS(BITS)
     ) convolve(
         .clk(clk),
         .reset(rst),
-        .ready(wbs_ack_o),
-        .valid(valid),
-        .rdata(rdata),
-        .wdata(wbs_dat_i),
-        .wstrb(wstrb),
-        .la_write(la_write),
-        .la_input(la_data_in[63:32]),
-        .count(count)
+        .img_input(img_input),
+        .kernel_in(kernel_in),
+        .kernel_write_en(kernel_write_en),
+        .shift_write_en(img_write_en),
+        .img_output(img_output)
+        // .ready(wbs_ack_o),
+        // .valid(valid),
+        // .rdata(rdata),
+        // .wdata(wbs_dat_i),
+        // .wstrb(wstrb),
+        // .la_write(la_write),
+        // .la_input(la_data_in[63:32]),
+        // .count(count)
     );
 
 endmodule
 
 module convolve #(
-    parameter BITS = 32,
+    parameter BITS = 9,
     parameter KERNEL_SIZE = 3
 )(
     input clk,
     input reset,
-    input valid,
-    input [3:0] wstrb,
-    input [BITS-1:0] wdata,
-    input [BITS-1:0] la_write,
-    input [BITS-1:0] la_input,
-    output ready,
-    output [BITS-1:0] rdata,
-    output [BITS-1:0] count
-    // img_input
-    // img_output
-    // kernel_in
-    // kernel_write_en
-    // shift_write_en
+    input [BITS-1:0] img_input,
+    input [BITS-1:0] kernel_in,
+    input kernel_write_en,
+    input shift_write_en,
+    output [BITS-1:0] img_output
+    // input valid,
+    // input [3:0] wstrb,
+    // input [BITS-1:0] wdata,
+    // input [BITS-1:0] la_write,
+    // input [BITS-1:0] la_input,
+    // output ready,
+    // output [BITS-1:0] rdata,
+    // output [BITS-1:0] count
 );
     // reg ready;
     // reg [BITS-1:0] count;
@@ -176,19 +197,7 @@ module convolve #(
     wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_output;
     wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_reg_output;
 
-    // TODO: where does this connect to?
-    wire img_input;
-    wire img_output;
-    wire kernel_in;
-    wire kernel_write_en, shift_write_en;
     wire kernel_ready, shift_ready;
-
-    // TODO: connect 
-    // img_input
-    // img_output
-    // kernel_in
-    // kernel_write_en
-    // shift_write_en
     
     shift_register #(
         .BITS(BITS),
@@ -196,7 +205,7 @@ module convolve #(
     ) shift_register (
         .clk(clk),
         .reset(reset),
-        .write_en(shift_write_en)
+        .write_en(shift_write_en),
         .serial_img_in(img_input),
         .ready(shift_ready),
         .out(shift_reg_output)
@@ -228,7 +237,7 @@ module convolve #(
 endmodule
 
 module shift_register #(
-    parameter BITS = 32,
+    parameter BITS = 9,
     parameter KERNEL_SIZE = 3,
     parameter IMG_LENGTH = 128
 )(
@@ -255,7 +264,7 @@ module shift_register #(
     always @(posedge clk) begin
         // RESET Logic
         if (reset) begin
-            for (m = 0; m < (IMG_LENGTH * (KERNEL_SIZE - 1); m = m + 1) begin
+            for (m = 0; m < IMG_LENGTH * (KERNEL_SIZE - 1); m = m + 1) begin
                 arr[m] <= 0;
             end
             counter <= 0;
@@ -299,26 +308,29 @@ module shift_register #(
 endmodule
 
 module kernel_mem #(
-    parameter BITS = 32,
+    parameter BITS = 9,
     parameter KERNEL_SIZE = 3
 )(
     input clk,
     input reset,
     input write_en,
-    input [BITS-1:0] kernel_in,
+    input signed [BITS-1:0] kernel_in,
     output ready,
-    output [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
-);
+    output signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
+);  
+
+    // FIXME: We need to flip the kernel for image convolution
+
     // Note: We use synchronous active high resets in the same way source code does
     // Note: We also assume that we get streamed one kernel value per clk cycle which
-    //       may be wrong, but we will stick with it for now TODO: 
+    //       may be wrong, but we will stick with it for now 
     // Declaration of net types for I/O 
     wire clk;
     wire reset;
     wire write_en;
-    wire [BITS-1:0] kernel_in;
+    wire signed [BITS-1:0] kernel_in;
     reg ready;
-    reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
+    reg signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
 
     // Intermediate values
     integer i;
@@ -346,31 +358,40 @@ module kernel_mem #(
         end
     end
 
-    assign ready = (counter == 9);
+    assign ready = (counter == 4'd9);
 endmodule
 
 module multiplier #(
-    parameter BITS = 32,
-    parameter KERNEL_SIZE = 3,
+    parameter BITS = 9,
+    parameter KERNEL_SIZE = 3
 )(
     input clk,
     input out_en,
     input [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in,
-    input [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_in,
-    output reg [BITS-1:0] pixel_out
+    input signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_in,
+    output reg signed [BITS-1:0] pixel_out
 );
 
-    wire [BITS-1:0] accum_out;
+    // FIXME: can actually be smaller than this
+    wire [BITS*3:0] accum_out;
     integer i;
 
     always @(posedge clk) begin
-        if (out_en) begin
+        if (!out_en) begin
             pixel_out <= 0;
+        end else if (|accum_out[BITS*3 - 1:BITS] & (accum_out[BITS*3] == 0)) begin
+            // Clip the value at maximum if the output overflow.
+            pixel_out <= {0, {(BITS-1){1}}};
+        end else if ((~&accum_out[BITS*3 - 1:BITS]) & (accum_out[BITS*3] == 1'b1)) begin
+            // Clip values at minimum
+            pixel_out <= {1, {(BITS-1){0}}};
         end else begin
-            pixel_out <= accum_out;
+            // Regular case
+            pixel_out <= accum_out[BITS-1:0];
         end 
     end
 
+    // optimize the multiplication (maybe clocked?)
     always @* begin
         accum_out = 0;
         for (i = 0; i < KERNEL_SIZE * KERNEL_SIZE; i = i + 1) begin
