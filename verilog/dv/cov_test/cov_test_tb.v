@@ -12,8 +12,8 @@ module cov_test_tb;
     localparam period = 20;
 
     reg clk, out_en;
-    reg[KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in, kernel_in
-    reg[BITS-1:0] pixel_out;
+    reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in, kernel_in;
+    reg [BITS-1:0] pixel_out;
 
     multiplier UUT (.clk(clk), .out_eb(out_eb), .shift_in(shift_in), .kernel_in(kernel_in), .pixel_out(pixel_out));    
 
@@ -26,15 +26,14 @@ begin
     #20; // low for 20 * timescale
 end
 
-always @(posedge clk)
-begin
+initial begin
 
     // test 1: All 0s
     // shift_in: [ 0 0 0; 0 0 0; 0 0 0]
     // kernel_in [ 0 0 0; 0 0 0; 1 1 1]
 
-    shift_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] = KERNEL_SIZE*KERNEL_SIZE*BITS'h0;
-    kernel_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] = KERNEL_SIZE*KERNEL_SIZE*BITS'h0;
+    shift_in = 0;
+    kernel_in = 0;
     #period
 
     // display message if output not matched
@@ -44,34 +43,34 @@ begin
     // test 2: All 1s (decimal)
     // shift_in: [ 1 1 1; 1 1 1; 1 1 1]
     // kernel_in [ 1 1 1; 1 1 1; 1 1 1]
-    shift_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0:0] = KERNEL_SIZE*KERNEL_SIZE*BITS:0'h;
-    kernel_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0:0] = KERNEL_SIZE*KERNEL_SIZE*BITS:0'h;
+    shift_in = {(KERNEL_SIZE*KERNEL_SIZE){9'd1}};
+    kernel_in = {(KERNEL_SIZE*KERNEL_SIZE){9'd1}};
     #period
 
-    if(pixel_out [BITS-1:0] != BITS'h9)  
+    if(pixel_out != 9)  
         $display("[Multiplier]: test failed for all 1s");
 
     // test 3: Overflow
     // shift_in: [ 255 255 255; 255 255 255; 255 255 255]
     // kernel_in [ 255 255 255; 255 255 255; 255 255 255]
 
-    shift_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0:0] = KERNEL_SIZE*KERNEL_SIZE*BITS:0'h;
-    kernel_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0:0] = KERNEL_SIZE*KERNEL_SIZE*BITS:0'h;
+    shift_in = {(KERNEL_SIZE*KERNEL_SIZE){9'd255}};
+    kernel_in = {(KERNEL_SIZE*KERNEL_SIZE){9'd255}};
     #period
 
-    if(pixel_out [BITS-1:0] != BITS'h255)  
+    if(pixel_out != 9'd255)  
         $display("[Multiplier]: test failed for overflow");
 
     // test 4: Underflow
     // shift_in: [ -256 -256 -256; -256 -256 -256; -256 -256 -256]
     // kernel_in [ -256 -256 -256; -256 -256 -256; -256 -256 -256]
-    shift_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0:0] = KERNEL_SIZE*KERNEL_SIZE*BITS:0'h18519084246547628289;
-    kernel_in [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0:0] = KERNEL_SIZE*KERNEL_SIZE*BITS:0'h18519084246547628289;
+
+    shift_in = {(KERNEL_SIZE*KERNEL_SIZE){-9'd256}};
+    kernel_in = {(KERNEL_SIZE*KERNEL_SIZE){-9'd256}};
     #period
 
-    if(pixel_out [BITS-1:0] != BITS'h-256)  
+    if(pixel_out != -9'd256)  
         $display("[Multiplier]: test failed for underflow");
-    
 end	
 
 endmodule
@@ -125,13 +124,6 @@ module kernel_mem_tb();
     //     output [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
     // );
 
-    // TODO: Test reset works correctly
-    // TODO: Check ready logic
-    // TODO: Test write enable. That output is the same if write_en is off
-    // TODO: Test that ready outputs correctly when it is done
-    // TODO: Test kernel input and that ready works correctly (normal case) NOTE: make sure that we get kernel that is flipped
-    // TODO: reset again to make sure that kernel resets
-
     // Parameters
     parameter BITS = 9;
     parameter KERNEL_SIZE = 3;
@@ -141,6 +133,10 @@ module kernel_mem_tb();
     reg [BITS-1:0] kernel_in;
     wire ready;
     wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
+
+    // Loop inputs
+    integer i;
+    integer j;
 
     // Declaration of Module
     kernel_mem uut(clk, 
@@ -155,15 +151,61 @@ module kernel_mem_tb();
         #0 clk = 1'b1;
         #0 reset = 1'b0;
         #0 kernel_in = 8'hff;
+        #0 write_en = 1'b0;
+        j = 0;
         
-        // try reset 
-        
-        
+        // Reset module to start testing
+        #1 reset = 1'b1;
+        #1 reset = 1'b0;
 
-        
-        
+        // Check if output is all 0s 
+        if (out != 0) begin
+            $display("Error encountered with reset. Out is not all reset to zeroes");
+            j = j + 1;
+        end
 
+        // Check Ready Logic
+        if (ready != 1'b0) begin
+            $display("Error encountered with ready signal");
+            j = j + 1;
+        end
 
+        // Test write enable
+        #1;
+        if (out != 0) begin
+            $display("Error encountered with write_en. Still writing to output kernel");
+            j = j + 1;
+        end
+
+        // Check Ready
+        #1 write_en = 1'b1;
+        #9;     // FIXME: Not sure whether or not we can change this to be kernel_size * kernel_size later
+
+        if (ready != 1'b1) begin
+            $display("Error encountered with ready signal. Waited (KERNEL_SIZE * KERNEL_SIZE) amount of time, yet no ready signal");
+            j = j + 1;
+        end
+
+        // Reset;
+        #1;
+        write_en = 1'b0;
+        reset = 1'b1;
+        #1 reset = 1'b0;
+
+        // Normal Test of kernel to check everything is correct
+        #1;
+        write_en = 1'b1;
+
+        for (i = 1; i < (KERNEL_SIZE * KERNEL_SIZE); i = i + 1) begin
+            #1 kernel_in = i;
+        end
+
+        // output should be 9, 8, 7, 6, 5, 4, 3, 2, 1
+        $display("Output from kernel_mem: %d", out);    // TODO: Should find better way of doing this later on
+
+        if (j == 0) begin
+            $display("All tests for kernel_mem pass!");
+        end
     end
 
     // Clock
