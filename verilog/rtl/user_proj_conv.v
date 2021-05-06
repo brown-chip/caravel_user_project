@@ -207,7 +207,7 @@ module shift_register #(
     // Intermediate shift register declaration
     // Dependent on img size, but I believe we need two full rows + 3 values
     reg [BITS-1:0] arr [(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE):0];
-    reg [31:0] counter;         // TODO: need to figure out how many bits we actually need
+    reg [31:0] counter;
     integer i;
     integer j, k;
     integer m;
@@ -223,7 +223,7 @@ module shift_register #(
             // Rest of logic
 
             // shift everything
-            for (i = 0; i < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE) - 1; i = i + 1) begin
+            for (i = 0; i < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE); i = i + 1) begin
                 arr[i] <= arr[i + 1];
             end
 
@@ -233,7 +233,7 @@ module shift_register #(
 
                 // Counter Logic
                 if (counter == (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE + 1)) begin
-                    counter = counter;
+                    counter <= counter;
                 end else begin
                     counter <= counter + 1;
                 end
@@ -243,13 +243,6 @@ module shift_register #(
 
     // Determine Output Bits that we need
     always @* begin
-        // l = 0;
-        // for (j = 0; j < (IMG_LENGTH * KERNEL_SIZE); j = j + IMG_LENGTH) begin
-        //     for (k = 0; k < KERNEL_SIZE; k = k + 1) begin
-        //         out[l+(BITS - 1):l] = arr[j + k];
-        //         l = l + BITS;
-        //     end
-        // end
         
         for (j = 0; j < KERNEL_SIZE; j = j + 1) begin
             for (k = 0; k < KERNEL_SIZE; k = k + 1) begin

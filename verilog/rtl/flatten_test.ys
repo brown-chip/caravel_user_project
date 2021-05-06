@@ -1,4 +1,0 @@
-read_verilog defines.v user_proj_conv.v ;
-hierarchy -check -top user_proj_conv
-synth -top user_proj_conv
-stat
