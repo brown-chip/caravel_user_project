@@ -13,9 +13,18 @@ module cov_test_tb;
 
     reg clk, out_en;
     reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in, kernel_in;
-    reg [BITS-1:0] pixel_out;
+    wire [BITS-1:0] pixel_out;
 
-    multiplier UUT (.clk(clk), .out_eb(out_eb), .shift_in(shift_in), .kernel_in(kernel_in), .pixel_out(pixel_out));    
+    multiplier #(
+        .BITS(BITS),
+        .KERNEL_SIZE(KERNEL_SIZE)
+    ) UUT (
+        .clk(clk),
+        .out_en(out_en),
+        .shift_in(shift_in),
+        .kernel_in(kernel_in),
+        .pixel_out(pixel_out)
+    );    
 
 always 
 begin
@@ -71,6 +80,8 @@ initial begin
 
     if(pixel_out != -9'd256)  
         $display("[Multiplier]: test failed for underflow");
+
+    $finish;
 end	
 
 endmodule
@@ -206,6 +217,8 @@ module kernel_mem_tb();
         if (j == 0) begin
             $display("All tests for kernel_mem pass!");
         end
+        
+        $finish;
     end
 
     // Clock

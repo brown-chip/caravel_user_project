@@ -39,3 +39,6 @@ set ::env(PL_TARGET_DENSITY) 0.05
 
 # If you're going to use multiple power domains, then keep this disabled.
 set ::env(RUN_CVC) 0
+
+# FIXME: why does Yosys optimize design away without this?
+set ::env(SYNTH_NO_FLAT) 1

@@ -111,14 +111,14 @@ module user_proj_conv #(
 
     assign io_out[3*BITS+1:2*BITS+2] = img_output;
     assign io_out[2*BITS+1:0] = 0;
-    assign io_out[`MPRJ_IO_PADS-1:3*BITS+2] = img_output;
+    assign io_out[`MPRJ_IO_PADS-1:3*BITS+2] = 0;
 
     assign io_oeb[2*BITS+1:0] = 0;
     assign io_oeb[`MPRJ_IO_PADS-1:2*BITS+2] = {(`MPRJ_IO_PADS-2*BITS-2){rst}};
 
     convolve #(
         .BITS(BITS)
-    ) convolve(
+    ) U1(
         .clk(clk),
         .reset(rst),
         .img_input(img_input),
@@ -132,7 +132,7 @@ endmodule
 
 module convolve #(
     parameter BITS = 9,
-    parameter KERNEL_SIZE = 3
+    parameter KERNEL_SIZE = 1
 )(
     input clk,
     input reset,
@@ -187,22 +187,22 @@ endmodule
 
 module shift_register #(
     parameter BITS = 9,
-    parameter KERNEL_SIZE = 3,
-    parameter IMG_LENGTH = 128
+    parameter KERNEL_SIZE = 1,
+    parameter IMG_LENGTH = 16
 )(
     input clk,
     input reset,
     input write_en,
     input [BITS-1:0] serial_img_in,
     output ready,
-    output [KERNEL_SIZE*KERNEL_SIZE*BITS - 1:0] out
+    output [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
 );
     wire clk;
     wire reset;
     wire write_en;
     wire [BITS-1:0] serial_img_in;
     wire ready;
-    reg [KERNEL_SIZE*KERNEL_SIZE*BITS - 1:0] out;
+    reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
 
     // Intermediate shift register declaration
     // Dependent on img size, but I believe we need two full rows + 3 values
@@ -215,7 +215,7 @@ module shift_register #(
     always @(posedge clk) begin
         // RESET Logic
         if (reset) begin
-            for (m = 0; m < IMG_LENGTH * (KERNEL_SIZE - 1); m = m + 1) begin
+            for (m = 0; m < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE); m = m + 1) begin
                 arr[m] <= 0;
             end
             counter <= 0;
@@ -250,7 +250,7 @@ module shift_register #(
         //         l = l + BITS;
         //     end
         // end
-
+        
         for (j = 0; j < KERNEL_SIZE; j = j + 1) begin
             for (k = 0; k < KERNEL_SIZE; k = k + 1) begin
                 out[(j*KERNEL_SIZE+k)*BITS +: BITS] = arr[j*IMG_LENGTH + k];
@@ -282,11 +282,11 @@ module kernel_mem #(
     wire write_en;
     wire signed [BITS-1:0] kernel_in;
     wire ready;
-    reg signed [(BITS-1):0] arr [((KERNEL_SIZE*KERNEL_SIZE) - 1):0];
+    reg signed [(BITS-1):0] arr [(KERNEL_SIZE*KERNEL_SIZE - 1):0];
     reg signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
 
     // Intermediate values
-    integer i;
+    integer i, j, k;
     reg [3:0] counter; // TODO: Change this to be able to work with kernel size
 
     always @ (posedge clk) begin
@@ -295,15 +295,17 @@ module kernel_mem #(
             //        fix later on to make the kernel be 1 in the middle and 0 everywhere else
 
             // Resets output values all to 0
-            arr[KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] <= 0;
+            for (i = 0; i < KERNEL_SIZE*KERNEL_SIZE; i = i + 1) begin
+                arr[i] <= 0;
+            end
 
             // reset the counter
             counter <= 0;
 
         end else begin
             // Assumes that the write_en is enabled continuously but shouldn't matter
-            if (write_en && counter < 9) begin
-                arr[(counter+1)*BITS-1:counter*BITS] = kernel_in;
+            if (write_en && counter < KERNEL_SIZE*KERNEL_SIZE) begin
+                arr[counter] = kernel_in;
                 counter <= counter + 4'd1;
             end else begin
                 counter <= counter;
@@ -314,8 +316,6 @@ module kernel_mem #(
     // Combinational Logic
     assign ready = (counter == KERNEL_SIZE*KERNEL_SIZE);
 
-    integer j, k;
-    
     always @* begin
         // We now flip the kernel so that we can compute convolution
         k = (KERNEL_SIZE * KERNEL_SIZE) - 1;  // k serves as the internal array address
@@ -348,10 +348,10 @@ module multiplier #(
             pixel_out <= 0;
         end else if (|accum_out[BITS*3 - 1:BITS] & (accum_out[BITS*3] == 0)) begin
             // Clip the value at maximum if the output overflow.
-            pixel_out <= {0, {(BITS-1){1}}};
+            pixel_out <= {1'd0, {(BITS-1){1'd1}}};
         end else if ((~&accum_out[BITS*3 - 1:BITS]) & (accum_out[BITS*3] == 1'b1)) begin
             // Clip values at minimum
-            pixel_out <= {1, {(BITS-1){0}}};
+            pixel_out <= {1'd0, {(BITS-1){1'd0}}};
         end else begin
             // Regular case
             pixel_out <= accum_out[BITS-1:0];
