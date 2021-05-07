@@ -118,7 +118,7 @@ module user_proj_conv #(
 
     convolve #(
         .BITS(BITS)
-    ) U1(
+    ) convolve (
         .clk(clk),
         .reset(rst),
         .img_input(img_input),
@@ -132,7 +132,8 @@ endmodule
 
 module convolve #(
     parameter BITS = 9,
-    parameter KERNEL_SIZE = 1
+    parameter KERNEL_SIZE = 3,
+    parameter IMG_LENGTH = 16
 )(
     input clk,
     input reset,
@@ -140,6 +141,7 @@ module convolve #(
     input [BITS-1:0] kernel_in,
     input kernel_write_en,
     input shift_write_en,
+    output output_valid,
     output [BITS-1:0] img_output
 );
 
@@ -147,10 +149,11 @@ module convolve #(
     wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_reg_output;
 
     wire kernel_ready, shift_ready;
-    
+
     shift_register #(
         .BITS(BITS),
-        .KERNEL_SIZE(KERNEL_SIZE)
+        .KERNEL_SIZE(KERNEL_SIZE),
+        .IMG_LENGTH(IMG_LENGTH)
     ) shift_register (
         .clk(clk),
         .reset(reset),
@@ -180,14 +183,15 @@ module convolve #(
         .out_en(shift_ready & kernel_ready),
         .shift_in(shift_reg_output),
         .kernel_in(kernel_output),
-        .pixel_out(img_output)
+        .pixel_out(img_output),
+        .output_valid(output_valid)
     );
 
 endmodule
 
 module shift_register #(
     parameter BITS = 9,
-    parameter KERNEL_SIZE = 1,
+    parameter KERNEL_SIZE = 3,
     parameter IMG_LENGTH = 16
 )(
     input clk,
@@ -243,7 +247,6 @@ module shift_register #(
 
     // Determine Output Bits that we need
     always @* begin
-        
         for (j = 0; j < KERNEL_SIZE; j = j + 1) begin
             for (k = 0; k < KERNEL_SIZE; k = k + 1) begin
                 out[(j*KERNEL_SIZE+k)*BITS +: BITS] = arr[j*IMG_LENGTH + k];
@@ -329,7 +332,8 @@ module multiplier #(
     input out_en,
     input [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in,
     input signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_in,  // FIXME: 
-    output reg signed [BITS-1:0] pixel_out
+    output reg signed [BITS-1:0] pixel_out,
+    output reg output_valid
 );
 
     // FIXME: can actually be smaller than this
@@ -337,8 +341,10 @@ module multiplier #(
     integer i;
 
     always @(posedge clk) begin
+        output_valid <= 1;
         if (!out_en) begin
             pixel_out <= 0;
+            output_valid <= 0;
         end else if (|accum_out[BITS*3 - 1:BITS] & (accum_out[BITS*3] == 0)) begin
             // Clip the value at maximum if the output overflow.
             pixel_out <= {1'd0, {(BITS-1){1'd1}}};

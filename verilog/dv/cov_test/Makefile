@@ -32,9 +32,11 @@ PDK_PATH?=/ef/tech/SW/sky130A
 ## Simulation mode: RTL/GL
 SIM?=RTL
 
+## TODO: simulate with non-typ value
+
 .SUFFIXES:
 
-PATTERN = cov_test
+PATTERN = convolve kernel_mem multiplier shift_register
 
 all:  ${PATTERN:=.vcd}
 
@@ -43,6 +45,7 @@ ifeq ($(SIM),RTL)
 	iverilog -DFUNCTIONAL -DSIM -I $(PDK_PATH) \
 	-I $(CARAVEL_BEHAVIOURAL_MODELS) -I $(CARAVEL_RTL_PATH) \
 	-I $(UPRJ_BEHAVIOURAL_MODELS)    -I $(UPRJ_RTL_PATH) \
+	-T typ \
 	$< -o $@ 
 else  
 	iverilog -DFUNCTIONAL -DSIM -DGL -I $(PDK_PATH) \
