@@ -1,10 +1,4 @@
-`default_nettype none
-
-`timescale 1 ns / 1 ps
-
-`include "uprj_netlists.v"
-`include "caravel_netlists.v"
-
+`timescale 1ns/1ps
 module shift_register_tb();
     // Parameters
     parameter BITS = 9;
@@ -56,7 +50,7 @@ module shift_register_tb();
 
         // Test ready logic
         #1 write_en = 1'b1;
-        #(IMG_LENGTH * KERNEL_SIZE - 1 * KERNEL_SIZE);
+        #(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE);
         
         if (ready != 1) begin
             $display("[shift register]: ready not available when it should be available");
@@ -74,22 +68,20 @@ module shift_register_tb();
         // normal / general test
         #1 write_en = 1'b1;
 
-        for (i = 0; i < IMG_LENGTH * KERNEL_SIZE - 1 * KERNEL_SIZE; i = i + 1) begin
+        for (i = 0; i < IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE; i = i + 1) begin
             serial_img_in = i;
             #1;
         end
 
-        // Check to see if output is correct at all
-        $display("[shift register]: output, %b", out);  // TODO: Check if this is correct at all
-
-        for (i = 0; i < KERNEL_SIZE*KERNEL_SIZE; i = i + 1) begin
-            $display("[shift register]: index: %d, output: %b, decimal: %d", i, real_out[i], real_out[i]);
+        for (i = 0; i < KERNEL_SIZE; i = i + 1) begin
+            for (j = 0; j < KERNEL_SIZE; j = j + 1) begin
+                if (real_out[(i * KERNEL_SIZE) + j] != (i * IMG_LENGTH) + j) begin
+                    $display("[shift register]: Error in Normal Test: Expected: %d , Got: %d", (i * IMG_LENGTH) + j, real_out[(i * KERNEL_SIZE) + j]);
+                    count = count + 1;
+                end 
+            end
         end
-
-        // I believe it shoud be something like 1, 2, 3, 
-        // img_length + 1, img_length + 2, img_length + 3
-        // img_length * 2 + 1,img_length * 2 + 2,img_length * 2 + 3
-
+        
         // Print out if no errors
         if (count == 0) begin
             $display("[shift register]: all tests pass!");
@@ -111,5 +103,3 @@ module shift_register_tb();
     end
 
 endmodule
-
-`default_nettype wire
