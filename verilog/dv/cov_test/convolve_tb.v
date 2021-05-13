@@ -4,7 +4,6 @@
 
 `include "uprj_netlists.v"
 `include "caravel_netlists.v"
-`include "spiflash.v"
 
 
 module convolve_tb();
@@ -26,7 +25,7 @@ module convolve_tb();
 
     localparam BITS = 9;
     localparam KERNEL_SIZE = 3;
-    localparam IMG_LENGTH = 16;
+    localparam IMG_LENGTH = 5;
     localparam IMG_NAME = "img1.hex";
     localparam period = 20;
     
@@ -109,7 +108,7 @@ module convolve_tb();
 
         // load in the image input from SPI flash
         img_write_en = 1;
-        for (i = 0; i < 256; i = i + 1) begin
+        for (i = 0; i < 32; i = i + 1) begin
             img_input = memory[i];
 
             if (output_valid) begin

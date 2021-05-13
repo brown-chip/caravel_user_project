@@ -12,8 +12,9 @@ module multiplier_tb;
     localparam period = 20;
 
     reg clk, out_en;
-    reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in, kernel_in;
-    wire [BITS-1:0] pixel_out;
+    reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_in;
+    reg signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] kernel_in;
+    wire signed [BITS-1:0] pixel_out;
     wire output_valid;
 
     multiplier #(
@@ -77,12 +78,12 @@ initial begin
     // kernel_in [ -256 -256 -256; -256 -256 -256; -256 -256 -256]
 
     shift_in = {(KERNEL_SIZE*KERNEL_SIZE){-9'd256}};
-    kernel_in = {(KERNEL_SIZE*KERNEL_SIZE){-9'd256}};
+    kernel_in = {(KERNEL_SIZE*KERNEL_SIZE){9'd255}};
     #period;
 
-    if(pixel_out != -9'd256)  
-        $display("[Multiplier]: test failed for underflow");
-
+    if(pixel_out != -9'd256) begin
+        $display("[Multiplier]: test failed for underflow. Expected -256 but got %b (accum=%d)", pixel_out, UUT.accum_out);
+    end
     $finish;
 end	
 

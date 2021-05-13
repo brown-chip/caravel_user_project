@@ -11,6 +11,9 @@ module shift_register_tb();
     parameter KERNEL_SIZE = 3;
     parameter IMG_LENGTH = 16;
 
+    // Parsed Output
+    reg [BITS-1:0] real_out [KERNEL_SIZE*KERNEL_SIZE-1:0];
+
     // Input Output
     reg clk, reset, write_en;
     reg [BITS-1:0] serial_img_in;
@@ -19,7 +22,7 @@ module shift_register_tb();
 
     // Counter
     integer count;
-    integer i;
+    integer i, j, k;
 
     // Declaration of module
     shift_register uut(clk, reset, write_en, serial_img_in, ready, out);
@@ -43,7 +46,7 @@ module shift_register_tb();
         end
 
         // Test write_en
-        #1 serial_img_in = BITS'd1;
+        #1 serial_img_in = 9'd1;
         #1;
 
         if (out != 0) begin
@@ -55,8 +58,9 @@ module shift_register_tb();
         #1 write_en = 1'b1;
         #(IMG_LENGTH * KERNEL_SIZE - 1 * KERNEL_SIZE);
         
-        if (ready != 0) begin
+        if (ready != 1) begin
             $display("[shift register]: ready not available when it should be available");
+            count = count + 1;
         end
 
         // Quick reset
@@ -78,6 +82,10 @@ module shift_register_tb();
         // Check to see if output is correct at all
         $display("[shift register]: output, %b", out);  // TODO: Check if this is correct at all
 
+        for (i = 0; i < KERNEL_SIZE*KERNEL_SIZE; i = i + 1) begin
+            $display("[shift register]: index: %d, output: %b, decimal: %d", i, real_out[i], real_out[i]);
+        end
+
         // I believe it shoud be something like 1, 2, 3, 
         // img_length + 1, img_length + 2, img_length + 3
         // img_length * 2 + 1,img_length * 2 + 2,img_length * 2 + 3
@@ -92,6 +100,15 @@ module shift_register_tb();
 
     // Clock
     always #0.5 clk <= ~clk;
+
+    // Assign to easily understand what is going on
+    always @* begin
+        k = 0;
+        for (j = 0; j < KERNEL_SIZE*KERNEL_SIZE; j = j + 1) begin
+            real_out[j] = out[BITS*k +: BITS];
+            k = k + 1;
+        end   
+    end
 
 endmodule
 

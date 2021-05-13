@@ -149,6 +149,8 @@ module convolve #(
     wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] shift_reg_output;
 
     wire kernel_ready, shift_ready;
+    wire mult_out_valid;
+    wire [BITS-1:0] mult_output;
 
     shift_register #(
         .BITS(BITS),
@@ -183,6 +185,18 @@ module convolve #(
         .out_en(shift_ready & kernel_ready),
         .shift_in(shift_reg_output),
         .kernel_in(kernel_output),
+        .pixel_out(mult_output),
+        .output_valid(mult_out_valid)
+    );
+
+    output_filter #(
+        .BITS(BITS),
+        .IMG_LENGTH(IMG_LENGTH)
+    ) output_filter (
+        .clk(clk),
+        .reset(reset),
+        .input_valid(mult_out_valid),
+        .pixel_in(mult_output),
         .pixel_out(img_output),
         .output_valid(output_valid)
     );
@@ -199,7 +213,7 @@ module shift_register #(
     input write_en,
     input [BITS-1:0] serial_img_in,
     output ready,
-    output [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
+    output [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out   // FIXME: Worth looking into whether or not we can declare these functions of parameters as their own parameter
 );
     wire clk;
     wire reset;
@@ -255,6 +269,7 @@ module shift_register #(
     end
 
     // If counter is full
+    // FIXME: fix counter for the last few rows
     assign ready = (counter == (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE + 1));
 endmodule
 
@@ -324,6 +339,21 @@ module kernel_mem #(
 
 endmodule
 
+module output_filter #(
+    parameter BITS = 9,
+    parameter IMG_LENGTH = 16
+)(
+    input clk,
+    input reset,
+    input signed [BITS-1:0] pixel_in,
+    input input_valid,
+    output wire signed [BITS-1:0] pixel_out,
+    output wire output_valid
+);
+
+    // assign pixel_out = pixel_in & {(BITS){output_valid}}; 
+endmodule
+
 module multiplier #(
     parameter BITS = 9,
     parameter KERNEL_SIZE = 3
@@ -337,7 +367,7 @@ module multiplier #(
 );
 
     // FIXME: can actually be smaller than this
-    reg [BITS*3:0] accum_out;
+    reg signed [BITS*3:0] accum_out;
     integer i;
 
     always @(posedge clk) begin
@@ -350,7 +380,7 @@ module multiplier #(
             pixel_out <= {1'd0, {(BITS-1){1'd1}}};
         end else if ((~&accum_out[BITS*3 - 1:BITS]) & (accum_out[BITS*3] == 1'b1)) begin
             // Clip values at minimum
-            pixel_out <= {1'd0, {(BITS-1){1'd0}}};
+            pixel_out <= {1'd1, {(BITS-1){1'd0}}};
         end else begin
             // Regular case
             pixel_out <= accum_out[BITS-1:0];
@@ -361,7 +391,11 @@ module multiplier #(
     always @* begin
         accum_out = 0;
         for (i = 0; i < KERNEL_SIZE * KERNEL_SIZE; i = i + 1) begin
-            accum_out = accum_out + shift_in[i*BITS +: BITS] * kernel_in[i*BITS +: BITS];
+            accum_out = accum_out +
+                $signed({{(BITS*2){shift_in[(i+1)*BITS - 1]}}, shift_in[i*BITS +: BITS]}) *
+                $signed({{(BITS*2){kernel_in[(i+1)*BITS - 1]}}, kernel_in[i*BITS +: BITS]});
+            // $display("Accum %d: %d (%h) %d %d", i, accum_out, accum_out, $signed({{(BITS*2){shift_in[(i+1)*BITS - 1]}}, shift_in[i*BITS +: BITS]}),
+            //     $signed({{(BITS*2){kernel_in[(i+1)*BITS - 1]}}, kernel_in[i*BITS +: BITS]}));
         end
     end
 
