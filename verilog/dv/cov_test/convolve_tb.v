@@ -23,13 +23,52 @@ module convolve_tb();
     // Also try and put in some nonsymmetric kernels. We should be testing to 
     // make sure it works on all kernels (presumably) and not just some kernels
 
-    localparam BITS = 9;
-    localparam KERNEL_SIZE = 3;
-    localparam IMG_LENGTH = 5;
-    localparam IMG_NAME = "img1.hex";
-    localparam period = 20;
-    
-    reg clock, reset;
+    localparam PERIOD = 20;
+    reg clock;
+    reg start0;
+    wire done0;
+
+	initial begin
+		clock = 0;
+    end
+
+    always #(PERIOD/2) clock <= (clock === 1'b0);
+
+    convolve_runner #(
+        .BITS(9),
+        .KERNEL_SIZE(3),
+        .IMG_LENGTH(16),
+        .IMG_NAME("img1.hex"),
+        .PERIOD(PERIOD)
+    ) U1 (
+        .clock(clock),
+        .start(start0),
+        .done(done0)
+    );
+
+    initial begin
+		#20
+        start0 = 1;
+        wait(done0);
+        $finish;
+	end
+endmodule
+
+
+module convolve_runner #(
+    parameter BITS = 9,
+    parameter KERNEL_SIZE = 3,
+    parameter IMG_LENGTH = 16,
+    parameter IMG_SIZE = 265,
+    parameter IMG_NAME = "img1.hex",
+    parameter PERIOD = 20
+)
+(
+    input wire clock,
+    input wire start,
+    output reg done
+);
+    reg reset;
     reg [BITS-1:0] img_input;
     reg [BITS-1:0] kernel_in;
     wire [BITS-1:0] img_output;
@@ -54,19 +93,13 @@ module convolve_tb();
 
     // image memory
     
-	reg [7:0] memory [255:0];
+	reg [7:0] memory [0:IMG_SIZE-2];
 
 	initial begin
 		$display("Reading %s",  IMG_NAME);
 		$readmemh(IMG_NAME, memory);
 		$display("%s loaded into memory", IMG_NAME);
 	end
-
-    always #(period/2) clock <= (clock === 1'b0);
-
-	initial begin
-		clock = 0;
-    end
 
     reg [BITS-1:0] kernel_arr [8:0];
     integer i;
@@ -78,20 +111,23 @@ module convolve_tb();
     end
 
 	initial begin
+        done = 0;
+        wait(start == 1'd1);
         kernel_write_en = 0;
         img_write_en = 0;
         reset = 1;
-        #period;
+        #PERIOD;
         reset = 0;
-        #period;
+        #PERIOD;
         kernel_write_en = 1;
+        $display("[Convolve]: begin testing");
         // load in the kernel
         for (i = 0; i < 9; i = i + 1) begin
             kernel_in = kernel_arr[i];
             if (UUT.kernel_mem.ready) begin
                 $display("[Convolve]: kernel become ready too soon");
             end
-            #period;
+            #PERIOD;
         end
         kernel_write_en = 0;
 
@@ -104,28 +140,32 @@ module convolve_tb();
                 $display("[Convolve]: kernel output is incorrect");
             end
         end
-        #period;
+        #PERIOD;
+        $display("[Convolve]: kernel loaded");
 
         // load in the image input from SPI flash
         img_write_en = 1;
-        for (i = 0; i < 32; i = i + 1) begin
+        for (i = 0; i < IMG_SIZE; i = i + 1) begin
             img_input = memory[i];
 
             if (output_valid) begin
                 $display("[Convolve]: Received %h", img_output);
             end
-            #period;
+            #PERIOD;
         end
         img_write_en = 0;
-        #period;
+        #PERIOD;
 
         for (i = 0; i < 128; i = i + 1) begin
             if (output_valid) begin
                 $display("[Convolve]: Received %h", img_output);
             end
-            #period;
+            #PERIOD;
         end
 
-        $finish;
+        done = 1;
 	end
+
 endmodule
+
+`default_nettype wire

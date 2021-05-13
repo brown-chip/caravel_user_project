@@ -36,7 +36,7 @@ SIM?=RTL
 
 .SUFFIXES:
 
-PATTERN = convolve kernel_mem multiplier shift_register
+PATTERN = convolve
 
 all:  ${PATTERN:=.vcd}
 

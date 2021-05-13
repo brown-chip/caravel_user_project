@@ -191,7 +191,8 @@ module convolve #(
 
     output_filter #(
         .BITS(BITS),
-        .IMG_LENGTH(IMG_LENGTH)
+        .IMG_LENGTH(IMG_LENGTH),
+        .KERNEL_SIZE(KERNEL_SIZE)
     ) output_filter (
         .clk(clk),
         .reset(reset),
@@ -255,6 +256,9 @@ module shift_register #(
                 end else begin
                     counter <= counter + 1;
                 end
+            end else begin
+                counter <= 0;
+                arr[(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)] <= 0;
             end
         end      
     end
@@ -341,17 +345,29 @@ endmodule
 
 module output_filter #(
     parameter BITS = 9,
-    parameter IMG_LENGTH = 16
+    parameter IMG_LENGTH = 16,
+    parameter KERNEL_SIZE = 3
 )(
     input clk,
     input reset,
     input signed [BITS-1:0] pixel_in,
     input input_valid,
     output wire signed [BITS-1:0] pixel_out,
-    output wire output_valid
+    output reg output_valid
 );
 
-    // assign pixel_out = pixel_in & {(BITS){output_valid}}; 
+    assign pixel_out = pixel_in & {(BITS){output_valid}}; 
+
+    integer cnt;
+    always @(posedge clk) begin
+        if (reset || !input_valid || cnt == IMG_LENGTH - 1) begin
+            cnt <= 0;
+        end else begin
+            cnt <= cnt + 1;
+        end
+
+        output_valid = input_valid & (cnt <= IMG_LENGTH - KERNEL_SIZE);
+    end
 endmodule
 
 module multiplier #(
@@ -391,11 +407,10 @@ module multiplier #(
     always @* begin
         accum_out = 0;
         for (i = 0; i < KERNEL_SIZE * KERNEL_SIZE; i = i + 1) begin
+            // FIXME: this is too long, fix this
             accum_out = accum_out +
                 $signed({{(BITS*2){shift_in[(i+1)*BITS - 1]}}, shift_in[i*BITS +: BITS]}) *
                 $signed({{(BITS*2){kernel_in[(i+1)*BITS - 1]}}, kernel_in[i*BITS +: BITS]});
-            // $display("Accum %d: %d (%h) %d %d", i, accum_out, accum_out, $signed({{(BITS*2){shift_in[(i+1)*BITS - 1]}}, shift_in[i*BITS +: BITS]}),
-            //     $signed({{(BITS*2){kernel_in[(i+1)*BITS - 1]}}, kernel_in[i*BITS +: BITS]}));
         end
     end
 
