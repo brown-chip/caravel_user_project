@@ -215,17 +215,18 @@ module shift_register #(
     input wire [BITS-1:0] serial_img_in,
     output wire ready,
     output reg [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
-);
+); 
+    localparam ARR_SIZE = (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE);
     // Intermediate shift register declaration
     // Dependent on img size, but I believe we need two full rows + 3 values
-    reg [BITS-1:0] arr [(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)-1:0];
+    reg [BITS-1:0] arr [ARR_SIZE-1:0];
     reg [31:0] counter;
     integer i,j,k,m;
     
     always @(posedge clk) begin
         // RESET Logic
         if (reset) begin
-            for (m = 0; m < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE); m = m + 1) begin
+            for (m = 0; m < ARR_SIZE; m = m + 1) begin
                 arr[m] <= 0;
             end
             counter <= 0;
@@ -233,27 +234,27 @@ module shift_register #(
             // Rest of logic
 
             // shift everything over from high index -> low index
-            for (i = 0; i < (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE); i = i + 1) begin
+            for (i = 0; i < ARR_SIZE - 1; i = i + 1) begin
                 arr[i] <= arr[i + 1];
             end
 
             // push in the data
             if (write_en) begin
                 // Write new serial_img data into highest index in shift reg
-                arr[(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)-1] <= serial_img_in;
+                arr[ARR_SIZE-1] <= serial_img_in;
 
                 // Counter Logic to handle ready
-                if (counter == (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)) begin
+                if (counter == ARR_SIZE) begin
                     counter <= counter;
                 end else begin
                     counter <= counter + 1;
                 end
             end else begin
                 // Get rid of inferred latch with writing 0 if not write_en
-                arr[(IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE)-1] <= 0;
+                arr[ARR_SIZE-1] <= 0;
                 counter <= 0;
             end
-        end      
+        end     
     end
 
     // Determine Output Comb logic
@@ -266,33 +267,27 @@ module shift_register #(
     end
 
     // If counter is full, then shift register is completely full and can start doing convolution 
-    assign ready = (counter == (IMG_LENGTH * (KERNEL_SIZE - 1) + KERNEL_SIZE));
+    assign ready = (counter == ARR_SIZE);
 endmodule
 
 module kernel_mem #(
     parameter BITS = 9,
     parameter KERNEL_SIZE = 3
 )(
-    input clk,
-    input reset,
-    input write_en,
-    input signed [BITS-1:0] kernel_in,
-    output ready,
-    output signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
+    input wire clk,
+    input wire reset,
+    input wire write_en,
+    input wire signed [BITS-1:0] kernel_in,
+    output wire ready,
+    output reg signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out
 );  
     // Note: We use synchronous active high resets in the same way source code does
     // Note: We also assume that we get streamed one kernel value per clk cycle which
     //       may be wrong, but we will stick with it for now 
     // Declaration of net types for I/O 
-    wire clk;
-    wire reset;
-    wire write_en;
-    wire signed [BITS-1:0] kernel_in;
-    wire ready;
-    reg signed [(BITS-1):0] arr [(KERNEL_SIZE*KERNEL_SIZE - 1):0];
-    reg signed [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
-
+    
     // Intermediate values
+    reg signed [(BITS-1):0] arr [(KERNEL_SIZE*KERNEL_SIZE - 1):0];
     integer i, j, k;
     reg [3:0] counter; // TODO: Change this to be able to work with kernel size
 
@@ -331,8 +326,6 @@ module kernel_mem #(
             k = k - 1;
         end
     end
-
-
 endmodule
 
 module output_filter #(
@@ -361,6 +354,7 @@ module output_filter #(
         
         output_valid <= bit_valid;
         pixel_out <= pixel_in & {(BITS){bit_valid}};
+        // $display("[output_filter] valid %d %d, out %d", input_valid, output_valid, pixel_out);
     end
 endmodule
 

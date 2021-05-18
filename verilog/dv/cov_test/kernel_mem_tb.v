@@ -1,7 +1,4 @@
-`default_nettype none
-
 `timescale 1 ns / 1 ps
-
 `include "uprj_netlists.v"
 `include "caravel_netlists.v"
 
@@ -15,10 +12,10 @@ module kernel_mem_tb();
     reg [BITS-1:0] kernel_in;
     wire ready;
     wire [KERNEL_SIZE*KERNEL_SIZE*BITS-1:0] out;
+    reg [BITS-1:0] easy_out [KERNEL_SIZE*KERNEL_SIZE-1:0];
 
     // Loop inputs
-    integer i;
-    integer j;
+    integer i, j, k;
 
     // Declaration of Module
     kernel_mem uut(clk, 
@@ -61,7 +58,7 @@ module kernel_mem_tb();
 
         // Check Ready
         #1 write_en = 1'b1;
-        #9;     // FIXME: Not sure whether or not we can change this to be kernel_size * kernel_size later
+        #9;     
 
         if (ready != 1'b1) begin
             $display("[kernel_mem]: Error encountered with ready signal. Waited (KERNEL_SIZE * KERNEL_SIZE) amount of time, yet no ready signal");
@@ -78,23 +75,20 @@ module kernel_mem_tb();
         #1;
         write_en = 1'b1;
 
-        // FIXME: Issue with this test not producing what we expect
         for (i = 1; i < (KERNEL_SIZE * KERNEL_SIZE) + 1; i = i + 1) begin
             kernel_in = i;
             #1;
         end
 
-        // output should be 9, 8, 7, 6, 5, 4, 3, 2, 1
-        // 000000001 000000010 000000011 000000100 000000101 000000110 000000111 000001000 000001001
-        // MSB                                                                                   LSB
-
-        $display("[kernel_mem]: Output from kernel_mem: %b", out);    // TODO: Should find better way of doing this later on
-        
-
-
+        for (i = 0; i < KERNEL_SIZE*KERNEL_SIZE; i = i + 1) begin
+            if (easy_out[i] != 9 - i) begin
+               $display("[kernel_mem]: Normal Test: Expected %d, but got %d instead", 9-i, easy_out[i]);
+               j = j + 1; 
+            end
+        end                                                                  
 
         if (j == 0) begin
-            $display("[kernel_mem]: All tests for kernel_mem pass!");
+            $display("[kernel_mem]: All tests for kernel_mem pass! 14/14");
         end
         
         $finish;
@@ -102,6 +96,11 @@ module kernel_mem_tb();
 
     // Clock
     always #0.5 clk <= ~clk;
-endmodule
 
-`default_nettype wire
+    // Reassign output to 9 bit intervals for ease of reading
+    always @* begin
+        for (k = 0; k < KERNEL_SIZE * KERNEL_SIZE; k = k + 1) begin
+            easy_out[k] = out[k*BITS +: BITS];
+        end        
+    end
+endmodule

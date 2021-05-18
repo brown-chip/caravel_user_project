@@ -1,4 +1,7 @@
 `timescale 1ns/1ps
+`include "uprj_netlists.v"
+`include "caravel_netlists.v"
+
 module shift_register_tb();
     // Parameters
     parameter BITS = 9;
